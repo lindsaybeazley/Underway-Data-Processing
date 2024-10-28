@@ -43,46 +43,79 @@ rm(list=ls()) #remove everything in the working environment.
 library(oce)
 library(ocedata)
 
-#set working directory
-setwd("C:/AZMP/1_SPRING_FALL_SURVEYS_FIXEDSTATIONS/1_BIANNUAL_Surveys/2024/FALL_DY18402/AtSea/Underway-Data-Processing")# set working directory
-#wd <- getwd()
-#setwd(wd)
-parent <- getwd()
-interpdata <- "2code_interp_plot_TSGdata/hourly_TSG_dataplots/"
+# this is the directory where R expects to find the local code
+# e.g "1code_readTSGdata/readflowdata.R"
+source_code_directory <- getwd()
+
+# path to where we want the processed files to end up
+pathprocessed <- Sys.getenv("Processed_Directory")
+
+#Map boundary limits used by plots in the function plot.tsg
+min_lat <- as.numeric(Sys.getenv("Min_Lat"))
+min_lon <- as.numeric(Sys.getenv("Min_Lon"))
+max_lat <- as.numeric(Sys.getenv("Max_Lat"))
+max_lon <- as.numeric(Sys.getenv("Max_Lon"))
+
+lonlim <- c(min_lon, max_lon)
+latlim <- c(min_lat, max_lat)
+
+# if the processed directory doesn't already exist create it
+if(!dir.exists(file.path(pathprocessed))) {
+  dir.create(file.path(pathprocessed))
+}
+
+# This directory should have been created in the 2TSG_interp.R script
+hourly_processed_data <- file.path(pathprocessed, "2code_interp_plot_TSGdata", "hourly_TSG_dataplots")
+
+# Create the directory where intermediate hourly plots and data will be stored 
+plot_output <- file.path(pathprocessed, "3code_plot_TSGdata")
+if(!dir.exists(plot_output)) {
+  dir.create(plot_output)
+}
 
 data('coastlineWorldFine', package="ocedata")
 
 #Topographic data downloaded from a data server that holds the ETOPO1 dataset 
 #(Amante, C. and B.W. Eakins, 2009) and saved as a netCDF file 
-topoFile <- download.topo(west = -75, east = -50,
-                          south = 38, north = 50,
+topoFile <- download.topo(west = min_lon, east = max_lon,
+                          south = min_lat, north = max_lat,
                           resolution = 1)
 ocetopo <- read.topo(topoFile)
 
 # Read the file containing all the variables interpolated hourly, named HUDyyyyfff_TSG_hourly.csv
-fileinterp <- list.files(path= interpdata, pattern = '*_TSG_hourly.csv', full.names = TRUE)
-d <- read.csv(fileinterp)
+fileinterp <- list.files(path=hourly_processed_data, pattern = '*_TSG_hourly.csv', full.names = TRUE)
 
 ###Lindsay: Cut off dates/times BEFORE the underway system was turned on:
-d <- subset(d, time > '2024-10-04 18:00:00')
+d <- read.csv(fileinterp)
+
+start_date <- Sys.getenv("Start_Date")
+end_date <- Sys.getenv("End_Date")
+
+# subset the data to remove bad head or tail data from the underway dataset
+if(start_date != '') d <- subset(d, time > start_date)
+if(end_date != '') d <- subset(d, time < end_date)
 
 lon <- d[['longitude']] * -1
 lat <- d[['latitude']]
 
-variables <- c('Conductivity_S_m', 
-               'FluorescenceUV', 
-               'pH', 
-               'Temperature_TSG_ITS_90', 'O2Concentration_ml_L',
-               'Fluorescence','salinity_PSU') #'CO2_ppm' removed from list
+conductivity <- "Conductivity_S_m"
+fluorescence_uv <- "FluorescenceUV"
+fluorescence <- 'Fluorescence'
+pH <- 'pH'
+temperature <- 'Temperature_TSG_ITS_90'
+oxygen <- 'O2Concentration_ml_L'
+salinity <- 'salinity_PSU'
+
+variables <- c(conductivity, fluorescence_uv, pH, temperature, oxygen,
+               fluorescence, salinity) #'CO2_ppm' removed from list
 
 proj <- '+proj=merc'
 fillcol <- 'lightgray'
-lonlim <- c(-70, -57.5)
-latlim <- c(41.5, 48)
-
 
 for (var in variables){
-  png(filename = paste0("3code_plot_TSGdata/",'TSG_', var, '.png'), width = 6, height = 4,
+  filename <- paste0('TSG_', var, '.png')
+  file <- file.path(plot_output, filename)
+  png(filename=file , width = 6, height = 4,
       units = 'in', res = 250, pointsize = 12)
   layout(matrix(1:2, nrow=1), widths=c(5, 0.3))
   par(mar = c(2, 3, 1, 1))
@@ -103,18 +136,19 @@ for (var in variables){
              z = ocetopo[['z']],
              levels = bathylevels,
              lwd = 0.8, col = bathycol)
-  if(var=='Conductivity_S_m') mtext("Conductivity (S/m)", side=4, line=4, col="black")
-  if(var=='FluorescenceUV') mtext(expression(paste("CDOM ", "(", mu,"g/L)", sep="")), side=4, line=4, col="black")
-  if(var=='pH') mtext("pH", side=4, line=4, col="black")
-  if(var=='Temperature_TSG_ITS_90') mtext(expression(paste("Temperature ","(",degree,"C)", sep="")), side=4, line=4, col="black")
-  if(var=='O2Concentration_ml_L') mtext("Dissolved Oxygen (ml/L)", side=4, line=4, col="black")
-  if(var=='Fluorescence') mtext(expression(paste("Chlorophyll ", "(", mu,"g/L)", sep="")), side=4, line=4, col="black")
-  if(var=='salinity_PSU') mtext("Salinity", side=4, line=4, col="black")
+  if(var==conductivity) mtext("Conductivity (S/m)", side=4, line=4, col="black")
+  if(var==fluorescence_uv) mtext(expression(paste("CDOM ", "(", mu,"g/L)", sep="")), side=4, line=4, col="black")
+  if(var==pH) mtext("pH", side=4, line=4, col="black")
+  if(var==temperature) mtext(expression(paste("Temperature ","(",degree,"C)", sep="")), side=4, line=4, col="black")
+  if(var==oxygen) mtext("Dissolved Oxygen (ml/L)", side=4, line=4, col="black")
+  if(var==fluorescence) mtext(expression(paste("Chlorophyll ", "(", mu,"g/L)", sep="")), side=4, line=4, col="black")
+  if(var==salinity) mtext("Salinity", side=4, line=4, col="black")
   mapPoints(lon, lat, pch = 20, col = cm$zcol)
   dev.off()
 }
 
 # Record session information
-sink("session_info2.txt")
+sink_dir <- file.path(pathprocessed, 'session_info3.txt')
+sink(sink_dir)
 sessionInfo()
 sink()

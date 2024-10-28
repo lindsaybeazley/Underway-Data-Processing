@@ -2,3 +2,12 @@
 .Rhistory
 .RData
 .Ruserdata
+.REnviron
+
+# ignore local status files
+session_info.txt
+TSGpostionlog.txt
+*.Rproj
+
+# ignore the downloaded topo data
+topo*.nc
